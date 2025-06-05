@@ -2,41 +2,25 @@ import streamlit as st
 import requests
 from bs4 import BeautifulSoup
 
-# Function to extract visible category text from static HTML
+# Function to extract visible content from static HTML
 def extract_category_text(url):
     try:
         headers = {'User-Agent': 'Mozilla/5.0'}
         response = requests.get(url, headers=headers, timeout=15)
         soup = BeautifulSoup(response.text, 'html.parser')
 
+        # Remove header, footer, nav elements
+        for tag in soup(['nav', 'header', 'footer']):
+            tag.decompose()
+
+        # Extract visible content from these tags
+        tags_to_extract = ['p', 'h1', 'h2', 'h3', 'h4', 'ul', 'ol', 'div']
         candidates = []
 
-        # Common visible tags
-        tags_to_extract = ['p', 'h1', 'h2', 'h3', 'h4', 'ul', 'ol']
         for tag in tags_to_extract:
-            elements = soup.find_all(tag)
-            for el in elements:
+            for el in soup.find_all(tag):
                 text = el.get_text(separator=" ", strip=True)
-                if text and len(text) > 30:  # Filter out very short bits
-                    candidates.append(text)
-
-        # Also target known class names used in eCommerce templates
-        class_names = [
-            'category-description',
-            'collection-description',
-            'page-description',
-            'text-content',
-            'main-copy',
-            'seo-text',
-            'content',
-            'rte',
-            'product-grid__description'
-        ]
-        for class_name in class_names:
-            blocks = soup.find_all(class_=class_name)
-            for block in blocks:
-                text = block.get_text(separator=" ", strip=True)
-                if text and text not in candidates:
+                if text and len(text.split()) >= 5:
                     candidates.append(text)
 
         combined_text = "\n\n".join(candidates)
@@ -49,8 +33,8 @@ def extract_category_text(url):
 
 # Streamlit UI
 st.set_page_config(page_title="eCommerce Content Extractor", layout="wide")
-st.title("🛍️ eCommerce Category Content Extractor (Static HTML)")
-st.markdown("Extracts visible content (including above/below product grid text) from eCommerce category pages using static HTML parsing. Compatible with **Streamlit Cloud**.")
+st.title("🛍️ eCommerce Category Content Extractor")
+st.markdown("This tool extracts visible, meaningful content from eCommerce category pages using static HTML. It **ignores navigation, headers, and footers**, and is compatible with **Streamlit Cloud**.")
 
 urls_input = st.text_area("Enter one or more category page URLs (one per line):", height=200)
 extract_button = st.button("Extract Content")
@@ -59,7 +43,7 @@ if extract_button and urls_input:
     urls = [u.strip() for u in urls_input.strip().splitlines() if u.strip()]
 
     for url in urls:
-        st.markdown(f"---\n### 🔗 URL: {url}")
+        st.markdown(f"---\n### 🔗 {url}")
         with st.spinner("Fetching and extracting content..."):
             content, word_count = extract_category_text(url)
             st.markdown(f"**Word Count:** `{word_count}`")
