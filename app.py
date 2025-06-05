@@ -1,18 +1,20 @@
 import streamlit as st
 import requests
-import justext
+import trafilatura
 
 def extract_main_content(url):
     try:
-        response = requests.get(url, timeout=10)
-        paragraphs = justext.justext(response.content, justext.get_stoplist("English"))
-        text = "\n".join([p.text for p in paragraphs if not p.is_boilerplate])
-        return text
+        response = requests.get(url, timeout=10, headers={'User-Agent': 'Mozilla/5.0'})
+        downloaded = trafilatura.extract(response.text)
+        if downloaded:
+            return downloaded
+        else:
+            return "No main content could be extracted."
     except Exception as e:
         return f"Error fetching {url}: {e}"
 
-st.title("eCommerce Category Content Extractor")
-st.write("Enter one or more eCommerce category URLs to extract the main page content using jusText.")
+st.title("eCommerce Category Content Extractor (with trafilatura)")
+st.write("Enter one or more eCommerce category URLs below. This tool will extract the main content using trafilatura.")
 
 urls_input = st.text_area("Enter URLs (one per line)")
 extract_button = st.button("Extract Content")
