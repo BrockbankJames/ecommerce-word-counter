@@ -56,4 +56,3 @@ if extract_button and urls_input:
                     st.error(f"Parsing error: {parse_err}")
             else:
                 st.error("❌ Page could not be rendered or loaded.")
-
