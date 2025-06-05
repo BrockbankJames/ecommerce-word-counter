@@ -10,18 +10,20 @@ def get_rendered_html(url):
             browser = p.chromium.launch(headless=True)
             page = browser.new_page()
             page.goto(url, timeout=30000)
-            time.sleep(2)  # Wait for JS content
+            time.sleep(2)  # Wait for JavaScript-rendered content
             html = page.content()
             browser.close()
             return html
     except Exception as e:
-        return None, f"Error rendering {url}: {e}"
+        return None  # Return None to indicate failure
 
-# Function to extract visible text from HTML using BeautifulSoup
+# Function to extract visible text blocks from rendered HTML
 def extract_text_blocks(html):
+    if html is None:
+        return "Page could not be rendered.", 0
+
     soup = BeautifulSoup(html, 'html.parser')
 
-    # Extract all visible <p> tags not inside <script> or <style>
     paragraphs = soup.find_all('p')
     text_blocks = [p.get_text(strip=True) for p in paragraphs if p.get_text(strip=True)]
 
@@ -33,7 +35,7 @@ def extract_text_blocks(html):
 # Streamlit UI
 st.set_page_config(page_title="eCommerce Content Extractor", layout="wide")
 st.title("🛍️ eCommerce Category Content Extractor")
-st.markdown("This tool uses **Playwright + BeautifulSoup** to extract rendered, visible content (e.g. intro + bottom copy) from eCommerce category pages.")
+st.markdown("This tool uses **Playwright + BeautifulSoup** to extract visible content from eCommerce category pages (above & below the product grid).")
 
 urls_input = st.text_area("Enter URLs (one per line)", height=200)
 extract_button = st.button("Extract Content")
@@ -46,8 +48,12 @@ if extract_button and urls_input:
         with st.spinner("Rendering and extracting content..."):
             html = get_rendered_html(url)
             if html:
-                text, word_count = extract_text_blocks(html)
-                st.markdown(f"**Word Count:** `{word_count}`")
-                st.text_area("Extracted Content", text, height=300)
+                try:
+                    text, word_count = extract_text_blocks(html)
+                    st.markdown(f"**Word Count:** `{word_count}`")
+                    st.text_area("Extracted Content", text, height=300)
+                except Exception as parse_err:
+                    st.error(f"Parsing error: {parse_err}")
             else:
-                st.error("Error fetching or rendering this page.")
+                st.error("❌ Page could not be rendered or loaded.")
+
