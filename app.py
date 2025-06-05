@@ -1,11 +1,13 @@
 import streamlit as st
-import trafilatura
 import pandas as pd
 from urllib.parse import urlparse
 import requests
 from concurrent.futures import ThreadPoolExecutor
 import time
 import logging
+from bs4 import BeautifulSoup
+import justext
+import re
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -59,8 +61,16 @@ def is_valid_url(url):
         logger.error(f"URL validation error: {str(e)}")
         return False
 
+def clean_text(text):
+    """Clean extracted text by removing extra whitespace and normalizing."""
+    # Remove extra whitespace
+    text = re.sub(r'\s+', ' ', text)
+    # Remove special characters but keep basic punctuation
+    text = re.sub(r'[^\w\s.,!?-]', '', text)
+    return text.strip()
+
 def scrape_url(url):
-    """Scrape content from a URL using trafilatura."""
+    """Scrape content from a URL using jusText."""
     logger.info(f"Processing URL: {url}")
     try:
         # Add timeout and headers to avoid blocking
@@ -68,42 +78,68 @@ def scrape_url(url):
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
         }
         logger.info(f"Fetching URL: {url}")
-        downloaded = trafilatura.fetch_url(url, headers=headers, timeout=10)
+        response = requests.get(url, headers=headers, timeout=10)
+        response.raise_for_status()  # Raise an exception for bad status codes
         
-        if downloaded:
-            logger.info(f"Successfully downloaded content from {url}")
-            # Extract main content
-            content = trafilatura.extract(downloaded, include_comments=False, 
-                                        include_tables=True, 
-                                        no_fallback=False)
-            
-            if content:
-                # Clean and count words
-                words = content.split()
-                word_count = len(words)
-                logger.info(f"Successfully extracted {word_count} words from {url}")
-                return {
-                    'url': url,
-                    'word_count': word_count,
-                    'status': 'Success',
-                    'error': None
-                }
-            else:
-                logger.warning(f"No content could be extracted from {url}")
-                return {
-                    'url': url,
-                    'word_count': 0,
-                    'status': 'Error',
-                    'error': 'No content could be extracted'
-                }
-        else:
-            logger.warning(f"Could not download content from {url}")
+        # Get the content type
+        content_type = response.headers.get('content-type', '').lower()
+        if 'text/html' not in content_type:
             return {
                 'url': url,
                 'word_count': 0,
                 'status': 'Error',
-                'error': 'Could not download the page'
+                'error': f'Invalid content type: {content_type}'
             }
+
+        # Parse the HTML
+        soup = BeautifulSoup(response.text, 'html.parser')
+        
+        # Remove script and style elements
+        for script in soup(["script", "style"]):
+            script.decompose()
+        
+        # Get the text content
+        paragraphs = justext.justext(response.text, justext.get_stoplist("English"))
+        
+        # Extract only the main content paragraphs
+        main_content = []
+        for paragraph in paragraphs:
+            if not paragraph.is_boilerplate:
+                main_content.append(paragraph.text)
+        
+        if main_content:
+            # Join all paragraphs and clean the text
+            full_text = ' '.join(main_content)
+            cleaned_text = clean_text(full_text)
+            
+            # Count words
+            words = cleaned_text.split()
+            word_count = len(words)
+            
+            logger.info(f"Successfully extracted {word_count} words from {url}")
+            return {
+                'url': url,
+                'word_count': word_count,
+                'status': 'Success',
+                'error': None
+            }
+        else:
+            logger.warning(f"No content could be extracted from {url}")
+            return {
+                'url': url,
+                'word_count': 0,
+                'status': 'Error',
+                'error': 'No content could be extracted'
+            }
+            
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Request error for {url}: {str(e)}")
+        return {
+            'url': url,
+            'word_count': 0,
+            'status': 'Error',
+            'error': f'Request failed: {str(e)}'
+        }
     except Exception as e:
         logger.error(f"Error processing {url}: {str(e)}")
         return {
@@ -212,6 +248,7 @@ with st.expander("How to use this tool"):
     
     ### Features
     - Extracts main content only (ignores headers, footers, and navigation)
+    - Uses jusText to remove boilerplate content
     - Processes multiple URLs in parallel
     - Provides word count statistics
     - Handles errors gracefully
@@ -227,5 +264,5 @@ with st.expander("How to use this tool"):
 if st.checkbox("Show debug information"):
     st.write("Session state:", st.session_state)
     st.write("Streamlit version:", st.__version__)
-    st.write("Trafilatura version:", trafilatura.__version__)
+    st.write("BeautifulSoup version:", BeautifulSoup.__version__)
     st.write("Pandas version:", pd.__version__)
